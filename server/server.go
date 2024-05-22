@@ -3,88 +3,127 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"time"
 
-	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
-type Quote struct {
-    Bid float64 `json:"bid"`
+type CotacaoUsdbrl struct {
+	Usdbrl struct {
+		Code       string `json:"code"`
+		Codein     string `json:"codein"`
+		Name       string `json:"name"`
+		High       string `json:"high"`
+		Low        string `json:"low"`
+		VarBid     string `json:"varBid"`
+		PctChange  string `json:"pctChange"`
+		Bid        string `json:"bid"`
+		Ask        string `json:"ask"`
+		Timestamp  string `json:"timestamp"`
+		CreateDate string `json:"create_date"`
+	} `json:"USDBRL"`
+}
+
+type ApiResultados struct {
+	ID  int    `gorm:"primaryKey"`
+	Bid string `json:"bid"`
 }
 
 func main() {
-    db, err := sqlx.Open("sqlite3", "./quotes.db")
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer db.Close()
-
-    http.HandleFunc("/cotacao", func(w http.ResponseWriter, r *http.Request) {
-        ctx, cancel := context.WithTimeout(r.Context(), 200*time.Millisecond)
-        defer cancel()
-
-        select {
-        case <-ctx.Done():
-            log.Println("Timeout ao buscar cotação do dólar")
-            http.Error(w, "Timeout ao buscar cotação do dólar", http.StatusInternalServerError)
-            return
-        default:
-            quote, err := fetchQuote(ctx)
-            if err != nil {
-                log.Println("Erro ao buscar cotação do dólar:", err)
-                http.Error(w, "Erro ao buscar cotação do dólar", http.StatusInternalServerError)
-                return
-            }
-            w.Header().Set("Content-Type", "application/json")
-            json.NewEncoder(w).Encode(quote)
-
-            // Salva a cotação no banco de dados
-            if err := saveQuote(ctx, db, quote); err != nil {
-                log.Println("Erro ao salvar cotação no banco de dados:", err)
-                return
-            }
-        }
-    })
-
-    log.Fatal(http.ListenAndServe(":8080", nil))
+	http.HandleFunc("/cotacao", buscaCotacaoHandler)
+	http.ListenAndServe(":8080", nil)
 }
 
-func fetchQuote(ctx context.Context) (*Quote, error) {
-    client := http.Client{
-        Timeout: 200 * time.Millisecond,
-    }
-    req, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
-    if err != nil {
-        return nil, err
-    }
+func buscaCotacaoHandler(w http.ResponseWriter, r *http.Request) {
 
-    resp, err := client.Do(req)
-    if err != nil {
-        return nil, err
-   }
-    defer resp.Body.Close()
+	if r.URL.Path != "/cotacao" {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        return nil, err
-    }
+	cotacao, error := buscaCotacao()
+	if error != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
-    var data map[string]Quote
-    if err := json.Unmarshal(body, &data); err != nil {
-        return nil, err
-    }
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 
-    return &data["USDBRL"], nil
+	var apiResultados ApiResultados
+
+	apiResultados.Bid = cotacao.Usdbrl.Bid
+
+	json.NewEncoder(w).Encode(apiResultados)
 }
 
-func saveQuote(ctx context.Context, db *sqlx.DB, quote *Quote) error {
-    _, err := db.ExecContext(ctx, "INSERT INTO quotes (bid) VALUES (?)", quote.Bid)
-    if err != nil {
-        return err
-    }
-    return nil
+func buscaCotacao() (*CotacaoUsdbrl, error) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://economia.awesomeapi.com.br/json/last/USD-BRL", nil)
+
+	if err != nil {
+		panic(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+
+	if err != nil {
+		panic(err)
+	}
+	defer res.Body.Close()
+
+	defer res.Body.Close()
+	body, error := ioutil.ReadAll(res.Body)
+
+	if error != nil {
+		return nil, error
+	}
+
+	var c CotacaoUsdbrl
+
+	error = json.Unmarshal(body, &c)
+
+	if error != nil {
+		return nil, error
+	}
+
+	var apiResultados ApiResultados
+	apiResultados.Bid = c.Usdbrl.Bid
+
+	error = saveCotacaoDatabase(apiResultados)
+
+	if error != nil {
+		return nil, error
+	}
+
+	return &c, nil
+}
+
+func saveCotacaoDatabase(cotacao ApiResultados) error {
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*10)
+	defer cancel()
+
+	select {
+	case <-ctx.Done():
+		return errors.New("excedeu tempo limite para salvar cotacao")
+	default:
+		db, err := gorm.Open(sqlite.Open("cotacao.db"), &gorm.Config{})
+		if err != nil {
+			panic(err)
+		}
+		db.AutoMigrate(&ApiResultados{})
+		err = db.Create(&cotacao).Error
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
 }

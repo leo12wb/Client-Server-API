@@ -14,40 +14,9 @@ Neste desafio, desenvolvemos um cliente e um servidor HTTP em Go para obter a co
 - Timeout máximo de 300ms para receber o resultado do `server.go`.
 - Salvar a cotação atual em um arquivo "cotacao.txt".
 
-## Como Executar
-
-1. Certifique-se de ter Go instalado em sua máquina. Você pode baixá-lo e instalá-lo [aqui](https://golang.org/dl/).
-
-2. Clone este repositório:
-
-    ```bash
-    git clone https://github.com/seu-usuario/desafio-go-http.git
-    ```
-
-3. Navegue até o diretório do projeto:
-
-    ```bash
-    cd desafio-go-http
-    ```
-
-4. Execute o servidor:
-
-    ```bash
-    go run server.go
-    ```
-
-5. Em outro terminal, execute o cliente:
-
-    ```bash
-    go run client.go
-    ```
-
 ## Estrutura do Projeto
-
 - `client.go`: Implementação do cliente HTTP.
 - `server.go`: Implementação do servidor HTTP.
-- `quotes.db`: Banco de dados SQLite para armazenar as cotações.
-- `cotacao.txt`: Arquivo onde a cotação atual é salva.
 
 ## Contribuindo
 

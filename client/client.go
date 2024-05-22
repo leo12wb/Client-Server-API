@@ -5,68 +5,57 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"time"
 )
 
-type Quote struct {
-    Bid float64 `json:"bid"`
+type ApiResultados struct {
+	Bid string `json:"bid"`
 }
 
 func main() {
-    ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-    defer cancel()
 
-    req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/cotacao", nil)
-    if err != nil {
-        log.Fatal(err)
-    }
+	//300ms
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 
-    client := http.Client{
-        Timeout: 300 * time.Millisecond,
-    }
-    resp, err := client.Do(req)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer resp.Body.Close()
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/cotacao", nil)
 
-    if resp.StatusCode != http.StatusOK {
-        log.Fatalf("Erro ao obter cotação: %s", resp.Status)
-    }
+	if err != nil {
+		panic(err)
+	}
+	res, err := http.DefaultClient.Do(req)
 
-    body, err := ioutil.ReadAll(resp.Body)
-    if err != nil {
-        log.Fatal(err)
-    }
+	if err != nil {
+		panic(err)
+	}
+	defer res.Body.Close()
 
-    var quote Quote
-    if err := json.Unmarshal(body, &quote); err != nil {
-        log.Fatal(err)
-    }
+	file, err := os.Create("cotacao.txt")
 
-    // Salva a cotação em um arquivo
-    err = saveQuoteToFile(quote)
-    if err != nil {
-        log.Fatal(err)
-    }
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Erro ao criar arquivo: %v\n", err)
+	}
 
-    fmt.Printf("Cotação do dólar: %.2f\n", quote.Bid)
-}
+	defer file.Close()
 
-func saveQuoteToFile(quote Quote) error {
-    file, err := os.Create("cotacao.txt")
-    if err != nil {
-        return err
-   }
-    defer file.Close()
+	body, err := ioutil.ReadAll(res.Body)
 
-    _, err = fmt.Fprintf(file, "Dólar: %.2f\n", quote.Bid)
-    if err != nil {
-        return err
-   }
+	if err != nil {
+		panic(err)
+	}
 
-    return nil
+	var data ApiResultados
+	err = json.Unmarshal(body, &data)
+
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = file.WriteString(fmt.Sprintf("Dólar: {%s}", data.Bid))
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Erro ao escrever no arquivo: %v\n", err)
+	}
 }
