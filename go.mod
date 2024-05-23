@@ -1,4 +1,4 @@
-module github.com/jorgemarinho/client-server-go-api
+module github.com/leo12wb/Client-Server-API
 
 go 1.19
 
